@@ -35,6 +35,20 @@ public:
     XBitArray ValidGuids;
 };
 
+/**
+ * Read-only metadata for a file embedded in a loaded CMO/NMO.
+ *
+ * In strict-load mode m_Data owns the exact embedded bytes and no file is
+ * extracted to the process temporary directory. The storage remains valid
+ * until the owning CKFile is cleared or destroyed.
+ */
+class CKFileIncludedFile
+{
+public:
+    XString m_Name;
+    XArray<CKBYTE> m_Data;
+};
+
 inline bool operator==(const CKFilePluginDependencies &lhs, const CKFilePluginDependencies &rhs)
 {
     return lhs.m_PluginCategory == rhs.m_PluginCategory &&
@@ -225,6 +239,12 @@ public:
     // Dependencies :
     XClassArray<CKFilePluginDependencies> *GetMissingPlugins();
 
+    // Embedded included-file inspection for recursive certification.
+    int GetIncludedFileCount() const;
+    CKSTRING GetIncludedFileName(int index) const;
+    int GetIncludedFileSize(int index) const;
+    const CKBYTE *GetIncludedFileData(int index) const;
+
     //-------------------------------------------------
 
     CKFile(CKContext *Context);
@@ -282,6 +302,7 @@ public:
     XClassArray<CKFilePluginDependencies> m_PluginsDep; // Plugins dependencies for this file  {secret}
     XClassArray<XIntArray> m_IndexByClassId;            // List of index in the m_FileObjects table sorted by ClassID  {secret}
     XClassArray<XString> m_IncludedFiles;               // List of files that should be inserted in the CMO file.  {secret}
+    XClassArray<CKFileIncludedFile> m_LoadedIncludedFiles; // Loaded embedded names/data for strict certification.
     CKFileInfo m_FileInfo;                              // Headers summary  {secret}
     CKBOOL m_SceneSaved;
     XBitArray m_AlreadySavedMask; // BitArray of IDs already saved  {secret}

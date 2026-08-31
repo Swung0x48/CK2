@@ -714,6 +714,16 @@ void CKWaveSound::SetDataToRead(int Size) {
 CKERROR CKWaveSound::Recreate(CKBOOL Safe) {
     SaveSettings();
 
+    // Headless contexts intentionally have no sound manager.  Loading a CMO
+    // must still preserve the CKWaveSound object and its serialized metadata;
+    // there is simply no backend source to create.  The previous fallback
+    // path unconditionally dereferenced m_SoundManager after TryRecreate()
+    // reported CKERR_NOTINITIALIZED.
+    if (!m_SoundManager) {
+        m_State &= ~CK_WAVESOUND_NEEDREWIND;
+        return CK_OK;
+    }
+
     CKERROR err = TryRecreate();
     if (err != CK_OK && Safe) {
         m_Context->OutputToConsole("CKError : Failed to load the sound file, creating a default blank sound.");

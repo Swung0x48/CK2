@@ -1062,6 +1062,20 @@ void CKContext::SetUserLoadCallback(CK_USERLOADCALLBACK fct, void *Arg) {
     m_UserLoadCallBackArgs = Arg;
 }
 
+void CKContext::SetFileLoadObserver(CK_FILELOADOBSERVER fct, void *Arg) {
+    m_FileLoadObserver = fct;
+    m_FileLoadObserverArgs = Arg;
+}
+
+void CKContext::NotifyFileLoadObserver(CKSTRING FileName,
+                                       CKERROR Result,
+                                       const CKFileLoadObjectRecord *Records,
+                                       int RecordCount) {
+    if (m_FileLoadObserver)
+        m_FileLoadObserver(this, FileName, Result, Records, RecordCount,
+                           m_FileLoadObserverArgs);
+}
+
 CK_LOADMODE CKContext::LoadVerifyObjectUnicity(CKSTRING OldName, CK_CLASSID Cid, char *NewName, CKObject **newobj, int NewNameSize) {
     if (!OldName) return CKLOAD_OK;
 
@@ -1782,6 +1796,8 @@ CKContext::CKContext(WIN_HANDLE iWin, int iRenderEngine, CKDWORD Flags) : m_Depe
     m_MatTexturesLoadMode = CKLOAD_INVALID;
     m_UserLoadCallBack = nullptr;
     m_UserLoadCallBackArgs = nullptr;
+    m_FileLoadObserver = nullptr;
+    m_FileLoadObserverArgs = nullptr;
     m_LoadPolicy = CK_LOAD_POLICY_LEGACY;
 
     m_TempPathBuffer = nullptr;

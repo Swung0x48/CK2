@@ -262,6 +262,41 @@ typedef CK_LOADMODE (*CK_USERLOADCALLBACK)(CK_CLASSID Cid, CKSTRING OldName, CKS
 
 typedef CK_LOADMODE (*CK_LOADRENAMECALLBACK)(CK_CLASSID Cid, CKSTRING OldName, CKSTRING NewName, CKObject **newobj, void *Arg);
 
+/**
+ * Immutable description of one object from a completed CKFile load.
+ *
+ * FileObjectIndex is the object's ordinal in the serialized CKFile object
+ * table. FileIndex and Name are the original values read from that table;
+ * they are deliberately not derived from the created object's runtime name.
+ * Name and the record array passed to CK_FILELOADOBSERVER are borrowed and
+ * remain valid only for the duration of the callback.
+ */
+typedef struct CKFileLoadObjectRecord
+{
+    int FileObjectIndex;
+    int FileIndex;
+    CK_ID FileObject;
+    CK_ID CreatedObject;
+    CK_CLASSID ObjectCid;
+    CKDWORD Options;
+    CKSTRING Name;
+} CKFileLoadObjectRecord;
+
+/**
+ * Synchronous, read-only notification emitted when a CKFile load finishes.
+ *
+ * FileName, Records, and every record Name are borrowed. Observers that need
+ * the data after returning must copy it. A failed load is reported with its
+ * CKERROR and an empty record array. The callback is context-scoped and is
+ * not cleared by CKFile's per-load rename callback cleanup.
+ */
+typedef void (*CK_FILELOADOBSERVER)(CKContext *Context,
+                                    CKSTRING FileName,
+                                    CKERROR Result,
+                                    const CKFileLoadObjectRecord *Records,
+                                    int RecordCount,
+                                    void *Arg);
+
 //----------------------------------------------------------//
 //		Behavior callback messages							//
 //----------------------------------------------------------//

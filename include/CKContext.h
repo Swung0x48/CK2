@@ -235,6 +235,11 @@ public:
 
     void SetAutomaticLoadMode(CK_LOADMODE GeneralMode, CK_LOADMODE _3DObjectsMode, CK_LOADMODE MeshMode, CK_LOADMODE MatTexturesMode);
     void SetUserLoadCallback(CK_USERLOADCALLBACK fct, void *Arg);
+    void SetFileLoadObserver(CK_FILELOADOBSERVER fct, void *Arg);
+    void NotifyFileLoadObserver(CKSTRING FileName,
+                                CKERROR Result,
+                                const CKFileLoadObjectRecord *Records,
+                                int RecordCount);
     CK_LOADMODE LoadVerifyObjectUnicity(CKSTRING OldName, CK_CLASSID Cid, char *NewName, CKObject **newobj, int NewNameSize = 260);
 
     CKBOOL IsInLoad();
@@ -353,6 +358,8 @@ public:
     CK_LOADMODE m_MatTexturesLoadMode;
     CK_USERLOADCALLBACK m_UserLoadCallBack;
     void *m_UserLoadCallBackArgs;
+    CK_FILELOADOBSERVER m_FileLoadObserver;
+    void *m_FileLoadObserverArgs;
     CKDWORD m_SelectedRenderEngine;
     CKBaseManager *m_CurrentManager;
     CKDependenciesContext m_DependenciesContext;

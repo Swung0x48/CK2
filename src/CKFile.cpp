@@ -329,6 +329,7 @@ CKERROR CKFile::OpenMemory(void *MemoryBuffer, int BufferSize, CK_LOAD_FLAGS Fla
 CKERROR CKFile::LoadFileData(CKObjectArray *liste) {
     if (m_Context->GetLoadPolicy() == CK_LOAD_POLICY_STRICT && m_OpenError != CK_OK) {
         const CKERROR err = m_OpenError;
+        m_Context->NotifyFileLoadObserver(m_FileName, err, nullptr, 0);
         ReleaseLoadResources();
         return err;
     }
@@ -380,6 +381,28 @@ CKERROR CKFile::LoadFileData(CKObjectArray *liste) {
     m_Context->ExecuteManagersPostLoad();
     m_Context->m_InLoad = FALSE;
 
+    if (err == CK_OK) {
+        XArray<CKFileLoadObjectRecord> records;
+        records.Resize(m_FileObjects.Size());
+        for (int i = 0; i < m_FileObjects.Size(); ++i) {
+            const CKFileObject &fileObject = m_FileObjects[i];
+            CKFileLoadObjectRecord &record = records[i];
+            record.FileObjectIndex = i;
+            record.FileIndex = fileObject.FileIndex;
+            record.FileObject = fileObject.Object;
+            record.CreatedObject = fileObject.CreatedObject;
+            record.ObjectCid = fileObject.ObjectCid;
+            record.Options = static_cast<CKDWORD>(fileObject.Options);
+            record.Name = fileObject.Name;
+        }
+        m_Context->NotifyFileLoadObserver(
+                m_FileName, err,
+                records.Size() > 0 ? records.Begin() : nullptr,
+                records.Size());
+    } else {
+        m_Context->NotifyFileLoadObserver(m_FileName, err, nullptr, 0);
+    }
+
     return err;
 }
 
@@ -415,6 +438,7 @@ void CKFile::ClearData() {
     m_ReferencedObjects.Clear();
     m_IndexByClassId.Clear();
     m_IncludedFiles.Clear();
+    m_LoadedIncludedFiles.Clear();
     m_PluginsDep.Clear();
     m_ObjectsHashTable.Clear();
 
@@ -460,6 +484,7 @@ void CKFile::FinalizeSaveState() {
 CKERROR CKFile::ReadFileHeaders(CKBufferParser **ParserPtr) {
     CKBufferParser *parser = *ParserPtr;
     m_IncludedFiles.Clear();
+    m_LoadedIncludedFiles.Clear();
 
     if (parser->Size() < sizeof(CKFileHeaderPart0)) {
         return CKERR_INVALIDFILE;
@@ -599,6 +624,7 @@ CKERROR CKFile::ReadFileHeaders(CKBufferParser **ParserPtr) {
                 return ReturnWithParserCleanup(parser, ParserPtr, CKERR_INVALIDFILE);
             }
             m_IncludedFiles.Resize(includedFileCount);
+            m_LoadedIncludedFiles.Resize(includedFileCount);
             includedFileSize -= sizeof(int);
             if (includedFileSize < 0) {
                 return ReturnWithParserCleanup(parser, ParserPtr, CKERR_INVALIDFILE);
@@ -814,8 +840,8 @@ CKERROR CKFile::ReadFileData(CKBufferParser **ParserPtr) {
     }
 
     if (m_IncludedFiles.Size() > 0) {
-        for (XClassArray<XString>::Iterator iit = m_IncludedFiles.Begin();
-             iit != m_IncludedFiles.End(); ++iit) {
+        for (int includedIndex = 0;
+             includedIndex < m_IncludedFiles.Size(); ++includedIndex) {
             const int fileNameLength = parser->ReadInt();
             XString fileName;
             if (fileNameLength < 0) {
@@ -846,8 +872,25 @@ CKERROR CKFile::ReadFileData(CKBufferParser **ParserPtr) {
                     delete parser;
                 return CKERR_INVALIDFILE;
             }
+            if (fileSize > parser->Size() - parser->CursorPos()) {
+                if (parser && parser != *ParserPtr)
+                    delete parser;
+                return CKERR_INVALIDFILE;
+            }
+
+            m_IncludedFiles[includedIndex] = fileName;
+            CKFileIncludedFile &included =
+                    m_LoadedIncludedFiles[includedIndex];
+            included.m_Name = fileName;
             if (fileSize > 0) {
-                if (fileName.Length() > 0) {
+                if (m_Context->GetLoadPolicy() == CK_LOAD_POLICY_STRICT) {
+                    included.m_Data.Resize(fileSize);
+                    if (!parser->Read(included.m_Data.Begin(), fileSize)) {
+                        if (parser && parser != *ParserPtr)
+                            delete parser;
+                        return CKERR_INVALIDFILE;
+                    }
+                } else if (fileName.Length() > 0) {
                     XString temp = m_Context->GetPathManager()->GetVirtoolsTemporaryFolder();
                     const size_t filePathSize = (size_t)temp.Length() + (size_t)fileName.Length() + 2;
                     char *filePath = new char[filePathSize];
@@ -1409,6 +1452,29 @@ void CKFile::RemapManagerInt(CKGUID Manager, int *ConversionTable, int TableSize
 
 XClassArray<CKFilePluginDependencies> *CKFile::GetMissingPlugins() {
     return &m_PluginsDep;
+}
+
+int CKFile::GetIncludedFileCount() const {
+    return m_LoadedIncludedFiles.Size();
+}
+
+CKSTRING CKFile::GetIncludedFileName(int index) const {
+    if (index < 0 || index >= m_LoadedIncludedFiles.Size())
+        return nullptr;
+    return m_LoadedIncludedFiles[index].m_Name.CStr();
+}
+
+int CKFile::GetIncludedFileSize(int index) const {
+    if (index < 0 || index >= m_LoadedIncludedFiles.Size())
+        return -1;
+    return m_LoadedIncludedFiles[index].m_Data.Size();
+}
+
+const CKBYTE *CKFile::GetIncludedFileData(int index) const {
+    if (index < 0 || index >= m_LoadedIncludedFiles.Size() ||
+            m_LoadedIncludedFiles[index].m_Data.IsEmpty())
+        return nullptr;
+    return m_LoadedIncludedFiles[index].m_Data.Begin();
 }
 
 CKFile::CKFile(CKContext *Context)
