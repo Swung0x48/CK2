@@ -1071,9 +1071,16 @@ void CKContext::NotifyFileLoadObserver(CKSTRING FileName,
                                        CKERROR Result,
                                        const CKFileLoadObjectRecord *Records,
                                        int RecordCount) {
-    if (m_FileLoadObserver)
-        m_FileLoadObserver(this, FileName, Result, Records, RecordCount,
+    if (m_FileLoadObserver) {
+        CK_ID initiatorBehavior = 0;
+        if (m_BehaviorManager && m_BehaviorManager->m_CurrentBehavior) {
+            initiatorBehavior =
+                    m_BehaviorManager->m_CurrentBehavior->GetID();
+        }
+        m_FileLoadObserver(this, initiatorBehavior, FileName, Result,
+                           Records, RecordCount,
                            m_FileLoadObserverArgs);
+    }
 }
 
 CK_LOADMODE CKContext::LoadVerifyObjectUnicity(CKSTRING OldName, CK_CLASSID Cid, char *NewName, CKObject **newobj, int NewNameSize) {

@@ -3,7 +3,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <limits>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -80,6 +82,60 @@ std::vector<unsigned char> MakeFileWithMissingBehaviorDependency() {
     AppendValue(file, part1);
     file.insert(file.end(), headerPayload.begin(), headerPayload.end());
     return file;
+}
+
+struct ScopedTestFiles {
+    std::vector<std::filesystem::path> paths;
+
+    ~ScopedTestFiles() {
+        std::error_code ignored;
+        for (const std::filesystem::path &path : paths) {
+            std::filesystem::remove(path, ignored);
+        }
+    }
+};
+
+struct FileLoadObserverCapture {
+    CK_ID nestedInitiator = 0;
+    int recordCount = 0;
+};
+
+void CaptureFileLoad(CKContext *,
+                     CK_ID initiatorBehavior,
+                     CKSTRING,
+                     CKERROR,
+                     const CKFileLoadObjectRecord *records,
+                     int recordCount,
+                     void *argument) {
+    FileLoadObserverCapture *capture =
+            static_cast<FileLoadObserverCapture *>(argument);
+    if (!capture) {
+        return;
+    }
+    if (initiatorBehavior != 0) {
+        capture->nestedInitiator = initiatorBehavior;
+    }
+    capture->recordCount += records ? recordCount : 0;
+}
+
+struct NestedBehaviorLoadState {
+    std::string fileName;
+    CKERROR result = CKERR_INVALIDFILE;
+    CKObjectArray loadedObjects;
+};
+
+NestedBehaviorLoadState *g_nestedBehaviorLoadState = nullptr;
+
+int ExecuteNestedBehaviorLoad(const CKBehaviorContext &behaviorContext) {
+    NestedBehaviorLoadState *state = g_nestedBehaviorLoadState;
+    if (!state || !behaviorContext.Context) {
+        return CKBR_GENERICERROR;
+    }
+    state->result = behaviorContext.Context->Load(
+            const_cast<CKSTRING>(state->fileName.c_str()),
+            &state->loadedObjects,
+            CK_LOAD_DEFAULT);
+    return state->result == CK_OK ? CKBR_OK : CKBR_GENERICERROR;
 }
 
 class CKAuthorityRuntimeTest : public ::testing::Test {
@@ -206,6 +262,50 @@ TEST_F(CKAuthorityRuntimeTest, StrictLoadPolicyRejectsTopLevelAndStagedCKFileLoa
     EXPECT_EQ(CKERR_INVALIDPARAMETER,
               context_->SetLoadPolicy(static_cast<CK_LOAD_POLICY>(99)));
     EXPECT_EQ(CK_LOAD_POLICY_STRICT, context_->GetLoadPolicy());
+}
+
+TEST_F(CKAuthorityRuntimeTest,
+       FileLoadObserverReportsExecutingBehaviorForNestedLoad) {
+    ASSERT_EQ(CK_OK, context_->SetLoadPolicy(CK_LOAD_POLICY_STRICT));
+
+    const auto stamp = std::chrono::steady_clock::now()
+                               .time_since_epoch()
+                               .count();
+    ScopedTestFiles files;
+    files.paths = {
+            std::filesystem::temp_directory_path() /
+                    ("ck2-observer-nested-" + std::to_string(stamp) + ".nmo")};
+    const std::string nestedFile = files.paths[0].string();
+
+    CKBehavior *sourceBehavior = static_cast<CKBehavior *>(
+            context_->CreateObject(CKCID_BEHAVIOR,
+                                   "SyntheticLoadInitiator"));
+    CKGroup *nestedObject = static_cast<CKGroup *>(
+            context_->CreateObject(CKCID_GROUP, "SyntheticNestedObject"));
+    ASSERT_NE(nullptr, sourceBehavior);
+    ASSERT_NE(nullptr, nestedObject);
+
+    CKObjectArray nestedObjects;
+    nestedObjects.InsertRear(nestedObject);
+    ASSERT_EQ(CK_OK, context_->Save(
+            const_cast<CKSTRING>(nestedFile.c_str()), &nestedObjects,
+            CK_STATESAVE_ALL));
+    context_->DestroyObject(nestedObject);
+
+    FileLoadObserverCapture capture;
+    context_->SetFileLoadObserver(CaptureFileLoad, &capture);
+    sourceBehavior->UseFunction();
+    sourceBehavior->SetFunction(ExecuteNestedBehaviorLoad);
+    NestedBehaviorLoadState nestedState;
+    nestedState.fileName = nestedFile;
+    g_nestedBehaviorLoadState = &nestedState;
+    sourceBehavior->Execute(1000.0f / 66.0f);
+    g_nestedBehaviorLoadState = nullptr;
+    context_->SetFileLoadObserver(nullptr, nullptr);
+
+    EXPECT_EQ(CK_OK, nestedState.result);
+    EXPECT_EQ(sourceBehavior->GetID(), capture.nestedInitiator);
+    EXPECT_GT(capture.recordCount, 0);
 }
 
 } // namespace

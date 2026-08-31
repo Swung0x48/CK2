@@ -285,12 +285,17 @@ typedef struct CKFileLoadObjectRecord
 /**
  * Synchronous, read-only notification emitted when a CKFile load finishes.
  *
- * FileName, Records, and every record Name are borrowed. Observers that need
- * the data after returning must copy it. A failed load is reported with its
- * CKERROR and an empty record array. The callback is context-scoped and is
- * not cleared by CKFile's per-load rename callback cleanup.
+ * InitiatorBehavior is the CK_ID of the behavior executing the load, or zero
+ * for a load initiated outside behavior execution. It can be resolved through
+ * a previous load record's CreatedObject to recover the initiator's original
+ * serialized ordinal and name. FileName, Records, and every record Name are
+ * borrowed. Observers that need the data after returning must copy it. A
+ * failed load is reported with its CKERROR and an empty record array. The
+ * callback is context-scoped and is not cleared by CKFile's per-load rename
+ * callback cleanup.
  */
 typedef void (*CK_FILELOADOBSERVER)(CKContext *Context,
+                                    CK_ID InitiatorBehavior,
                                     CKSTRING FileName,
                                     CKERROR Result,
                                     const CKFileLoadObjectRecord *Records,
