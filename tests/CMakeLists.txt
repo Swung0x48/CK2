@@ -145,6 +145,13 @@ add_ck2_test(CKContextRegressionTest
         CK2 VxMath
 )
 
+add_ck2_test(CKAuthorityRuntimeTest
+        SOURCES
+        CKAuthorityRuntimeTest.cpp
+        DEPENDENCIES
+        CK2 VxMath
+)
+
 add_ck2_test(CKSceneRegressionTest
         SOURCES
         CKSceneRegressionTest.cpp

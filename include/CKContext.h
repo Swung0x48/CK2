@@ -80,6 +80,24 @@ public:
     // Runtime mode
     CKERROR Process();
 
+    /*******************************************************
+    Summary: Processes one frame with an externally supplied delta.
+
+    Arguments:
+        DeltaMilliseconds: Finite, positive, unscaled frame duration in
+                           milliseconds.
+    Remarks:
+        + Enables CKTimeManager external-clock mode and executes the same frame
+          path as Process.
+        + Wall-clock time cannot replace the supplied delta in PreProcess.
+        + Call CKTimeManager::SetExternalClock(FALSE) to return to wall-clock
+          processing.
+    Return Value: CKERR_INVALIDPARAMETER for an invalid delta, otherwise the
+                  Process result.
+    See also: Process,CKTimeManager::SetExternalClock
+    *********************************************************/
+    CKERROR ProcessFixed(float DeltaMilliseconds);
+
     CKERROR ClearAll();
     CKBOOL IsInClearAll();
 
@@ -189,6 +207,21 @@ public:
     // Save/Load functions
     CKERROR Load(CKSTRING FileName, CKObjectArray *liste, CK_LOAD_FLAGS LoadFlags = CK_LOAD_DEFAULT, CKGUID *ReaderGuid = NULL);
     CKERROR Load(int BufferSize, void *MemoryBuffer, CKObjectArray *ckarray, CK_LOAD_FLAGS LoadFlags = CK_LOAD_DEFAULT);
+
+    /*******************************************************
+    Summary: Selects context-wide file-load error handling.
+
+    Remarks:
+        + CK_LOAD_POLICY_LEGACY is the default and preserves historical loads.
+        + CK_LOAD_POLICY_STRICT automatically checks plugin dependencies and
+          prevents CKFile object loading after any non-CK_OK open result.
+        + The active policy is queried by every CKFile associated with this
+          context, including staged and nested loads.
+    Return Value: CK_OK, or CKERR_INVALIDPARAMETER for an unknown policy.
+    See also: GetLoadPolicy,CK_LOAD_POLICY,CKFile::Load
+    *********************************************************/
+    CKERROR SetLoadPolicy(CK_LOAD_POLICY Policy);
+    CK_LOAD_POLICY GetLoadPolicy() const;
     CKSTRING GetLastFileLoaded();
 
     CKSTRING GetLastCmoLoaded();
@@ -339,6 +372,7 @@ public:
     CKBOOL m_InDynamicCreationMode;
     XObjectArray m_CopyObjects;
     XObjectPointerArray m_ObjectsUnused;
+    CK_LOAD_POLICY m_LoadPolicy;
 };
 
 #endif // CKCONTEXT_H

@@ -344,6 +344,14 @@ CKERROR CKContext::Process() {
     return CK_OK;
 }
 
+CKERROR CKContext::ProcessFixed(float DeltaMilliseconds) {
+    CKERROR err = m_TimeManager->SetExternalClock(TRUE, DeltaMilliseconds);
+    if (err != CK_OK) {
+        return err;
+    }
+    return Process();
+}
+
 CKERROR CKContext::ClearAll() {
     m_RunTime = FALSE;
     m_InClearAll = TRUE;
@@ -880,6 +888,8 @@ void CKContext::SetGlobalSoundsSaveOptions(CK_SOUND_SAVEOPTIONS Options) {
 CKERROR CKContext::Load(CKSTRING FileName, CKObjectArray *liste, CK_LOAD_FLAGS LoadFlags, CKGUID *ReaderGuid) {
     if (!FileName)
         return CKERR_INVALIDPARAMETER;
+    if (m_LoadPolicy == CK_LOAD_POLICY_STRICT)
+        LoadFlags = (CK_LOAD_FLAGS) (LoadFlags | CK_LOAD_CHECKDEPENDENCIES);
     m_LastFileLoaded = FileName;
     return g_ThePluginManager.Load(this, FileName, liste, LoadFlags, nullptr, ReaderGuid);
 }
@@ -895,6 +905,17 @@ CKERROR CKContext::Load(int BufferSize, void *MemoryBuffer, CKObjectArray *ckarr
     file->UpdateAndApplyAnimationsTo(nullptr);
     DeleteCKFile(file);
     return err;
+}
+
+CKERROR CKContext::SetLoadPolicy(CK_LOAD_POLICY Policy) {
+    if (Policy != CK_LOAD_POLICY_LEGACY && Policy != CK_LOAD_POLICY_STRICT)
+        return CKERR_INVALIDPARAMETER;
+    m_LoadPolicy = Policy;
+    return CK_OK;
+}
+
+CK_LOAD_POLICY CKContext::GetLoadPolicy() const {
+    return m_LoadPolicy;
 }
 
 CKSTRING CKContext::GetLastFileLoaded() {
@@ -1006,6 +1027,8 @@ CKERROR CKContext::LoadAnimationOnCharacter(CKSTRING FileName, CKObjectArray *li
     CKDWORD flags = CK_LOAD_ANIMATION;
     if (AsDynamicObjects)
         flags |= CK_LOAD_AS_DYNAMIC_OBJECT;
+    if (m_LoadPolicy == CK_LOAD_POLICY_STRICT)
+        flags |= CK_LOAD_CHECKDEPENDENCIES;
     return g_ThePluginManager.Load(this, FileName, liste, (CK_LOAD_FLAGS) flags, carac, ReaderGuid);
 }
 
@@ -1759,6 +1782,7 @@ CKContext::CKContext(WIN_HANDLE iWin, int iRenderEngine, CKDWORD Flags) : m_Depe
     m_MatTexturesLoadMode = CKLOAD_INVALID;
     m_UserLoadCallBack = nullptr;
     m_UserLoadCallBackArgs = nullptr;
+    m_LoadPolicy = CK_LOAD_POLICY_LEGACY;
 
     m_TempPathBuffer = nullptr;
     m_TempPathBufferAlt = nullptr;

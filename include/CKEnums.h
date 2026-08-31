@@ -1176,6 +1176,26 @@ typedef enum CK_LOAD_FLAGS
 } CK_LOAD_FLAGS;
 
 /*************************************************
+{filename:CK_LOAD_POLICY}
+Summary: Context-wide error handling policy for Virtools file loads.
+
+Remarks:
++ CK_LOAD_POLICY_LEGACY preserves the historical behavior where a CKFile direct
+  load may continue when dependency checking reports CKERR_PLUGINSMISSING.
++ CK_LOAD_POLICY_STRICT automatically enables CK_LOAD_CHECKDEPENDENCIES and
+  requires every CKFile load associated with the context to return CK_OK before
+  object data is loaded.
++ The policy applies to CKContext loads and to CKFile instances created from the
+  context, so callers do not need to propagate flags through nested loads.
+See also : CKContext::SetLoadPolicy,CKContext::GetLoadPolicy,CKFile::Load
+*************************************************/
+typedef enum CK_LOAD_POLICY
+{
+    CK_LOAD_POLICY_LEGACY = 0,
+    CK_LOAD_POLICY_STRICT = 1,
+} CK_LOAD_POLICY;
+
+/*************************************************
 {filename:CK_PLUGIN_TYPE}
 Summary: Type identifier for a Virtools plugin.
 Remarks:

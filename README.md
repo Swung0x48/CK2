@@ -89,6 +89,45 @@ if (CKCreateContext(&context, nullptr, 0) == CK_OK) {
 }
 ```
 
+### Deterministic fixed-clock processing
+
+Authoritative or headless runtimes can supply an exact unscaled delta in
+milliseconds. `ProcessFixed` enables the external clock and processes one frame;
+the time manager will not replace that delta with elapsed wall time. Existing
+minimum/maximum delta limits and the time scale factor still apply.
+
+```cpp
+constexpr float kServerTickMilliseconds = 1000.0f / 66.0f;
+context->ProcessFixed(kServerTickMilliseconds);
+
+CKTimeManager *time = context->GetTimeManager();
+time->SetExternalClock(FALSE); // Resume wall-clock Process() calls.
+```
+
+`ProcessFixed` rejects non-finite and non-positive deltas with
+`CKERR_INVALIDPARAMETER` without processing a frame.
+
+### Strict file loading
+
+Contexts default to `CK_LOAD_POLICY_LEGACY`, preserving the historical behavior
+that allows a direct `CKFile::Load` to continue after dependency checking reports
+`CKERR_PLUGINSMISSING`. Servers that must authenticate every map dependency can
+enable strict loading before opening any top-level or nested file:
+
+```cpp
+if (context->SetLoadPolicy(CK_LOAD_POLICY_STRICT) != CK_OK) {
+    // Invalid policy value.
+}
+
+CKERROR result = context->Load("Level_01.NMO", &loadedObjects);
+// Strict mode automatically adds CK_LOAD_CHECKDEPENDENCIES. Only CK_OK loads
+// object data; missing plugins and every other open error are returned directly.
+```
+
+The policy also applies to `CKFile` instances created by the context, including
+the staged `OpenFile`/`OpenMemory` plus `LoadFileData` API. Set
+`CK_LOAD_POLICY_LEGACY` explicitly to restore legacy behavior.
+
 ## Dependencies
 
 - VxMath for math and platform services

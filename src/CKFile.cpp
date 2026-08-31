@@ -254,7 +254,8 @@ CKERROR CKFile::OpenFile(CKSTRING filename, CK_LOAD_FLAGS Flags) {
     ClearData();
 
     if (!filename) {
-        return CKERR_INVALIDPARAMETER;
+        m_OpenError = CKERR_INVALIDPARAMETER;
+        return m_OpenError;
     }
 
     m_FileName = CKStrdup(filename);
@@ -264,7 +265,8 @@ CKERROR CKFile::OpenFile(CKSTRING filename, CK_LOAD_FLAGS Flags) {
         m_MappedFile = nullptr;
         delete[] m_FileName;
         m_FileName = nullptr;
-        return CKERR_INVALIDFILE;
+        m_OpenError = CKERR_INVALIDFILE;
+        return m_OpenError;
     }
 
     const size_t mappedSize = m_MappedFile->GetFileSize();
@@ -273,7 +275,8 @@ CKERROR CKFile::OpenFile(CKSTRING filename, CK_LOAD_FLAGS Flags) {
         m_MappedFile = nullptr;
         delete[] m_FileName;
         m_FileName = nullptr;
-        return CKERR_INVALIDFILE;
+        m_OpenError = CKERR_INVALIDFILE;
+        return m_OpenError;
     }
 
     m_Context->SetLastCmoLoaded(filename);
@@ -286,34 +289,50 @@ CKERROR CKFile::OpenMemory(void *MemoryBuffer, int BufferSize, CK_LOAD_FLAGS Fla
         ClearData();
     }
 
+    if (m_Context->GetLoadPolicy() == CK_LOAD_POLICY_STRICT) {
+        Flags = (CK_LOAD_FLAGS) (Flags | CK_LOAD_CHECKDEPENDENCIES);
+    }
+    m_Flags = Flags;
+    m_OpenError = CK_OK;
+
     if (!MemoryBuffer) {
-        return CKERR_INVALIDPARAMETER;
+        m_OpenError = CKERR_INVALIDPARAMETER;
+        return m_OpenError;
     }
 
     if (BufferSize < sizeof(CKFileHeaderPart0) || memcmp(MemoryBuffer, "Nemo", 4) != 0) {
-        return CKERR_INVALIDFILE;
+        m_OpenError = CKERR_INVALIDFILE;
+        return m_OpenError;
     }
 
     m_Parser = new CKBufferParser(MemoryBuffer, BufferSize);
     if (!m_Parser) {
-        return CKERR_OUTOFMEMORY;
+        m_OpenError = CKERR_OUTOFMEMORY;
+        return m_OpenError;
     }
 
     if (!m_Parser->m_Buffer) {
         delete m_Parser;
         m_Parser = nullptr;
-        return CKERR_INVALIDPARAMETER;
+        m_OpenError = CKERR_INVALIDPARAMETER;
+        return m_OpenError;
     }
 
     WarningForOlderVersion = FALSE;
-    m_Flags = Flags;
     m_ReadFileDataDone = FALSE;
     m_IndexByClassId.Resize(g_MaxClassID);
 
-    return ReadFileHeaders(&m_Parser);
+    m_OpenError = ReadFileHeaders(&m_Parser);
+    return m_OpenError;
 }
 
 CKERROR CKFile::LoadFileData(CKObjectArray *liste) {
+    if (m_Context->GetLoadPolicy() == CK_LOAD_POLICY_STRICT && m_OpenError != CK_OK) {
+        const CKERROR err = m_OpenError;
+        ReleaseLoadResources();
+        return err;
+    }
+
     if (!m_Parser && !m_ReadFileDataDone)
         return CKERR_INVALIDFILE;
 
@@ -402,6 +421,16 @@ void CKFile::ClearData() {
     delete[] m_FileName;
     m_FileName = nullptr;
 
+    ReleaseLoadResources();
+
+    m_Flags = 0;
+    m_SaveIDMax = 0;
+    m_SceneSaved = FALSE;
+    m_ReadFileDataDone = FALSE;
+    m_OpenError = CK_OK;
+}
+
+void CKFile::ReleaseLoadResources() {
     if (m_Parser) {
         delete m_Parser;
         m_Parser = nullptr;
@@ -411,11 +440,6 @@ void CKFile::ClearData() {
         delete m_MappedFile;
         m_MappedFile = nullptr;
     }
-
-    m_Flags = 0;
-    m_SaveIDMax = 0;
-    m_SceneSaved = FALSE;
-    m_ReadFileDataDone = FALSE;
 }
 
 CKERROR CKFile::ReturnWithParserCleanup(CKBufferParser *parser, CKBufferParser **ParserPtr, CKERROR err) {
@@ -847,6 +871,10 @@ CKERROR CKFile::ReadFileData(CKBufferParser **ParserPtr) {
 
 CKERROR CKFile::Load(CKSTRING filename, CKObjectArray *list, CK_LOAD_FLAGS Flags) {
     CKERROR err = OpenFile(filename, Flags);
+    if (err != CK_OK && m_Context->GetLoadPolicy() == CK_LOAD_POLICY_STRICT) {
+        ReleaseLoadResources();
+        return err;
+    }
     if (err != CK_OK && err != CKERR_PLUGINSMISSING)
         return err;
 
@@ -856,6 +884,10 @@ CKERROR CKFile::Load(CKSTRING filename, CKObjectArray *list, CK_LOAD_FLAGS Flags
 
 CKERROR CKFile::Load(void *MemoryBuffer, int BufferSize, CKObjectArray *list, CK_LOAD_FLAGS Flags) {
     CKERROR err = OpenMemory(MemoryBuffer, BufferSize, Flags);
+    if (err != CK_OK && m_Context->GetLoadPolicy() == CK_LOAD_POLICY_STRICT) {
+        ReleaseLoadResources();
+        return err;
+    }
     if (err != CK_OK && err != CKERR_PLUGINSMISSING)
         return err;
 
@@ -1387,7 +1419,8 @@ CKFile::CKFile(CKContext *Context)
       m_Flags(0),
       m_Parser(nullptr),
       m_MappedFile(nullptr),
-      m_ReadFileDataDone(FALSE) {
+      m_ReadFileDataDone(FALSE),
+      m_OpenError(CK_OK) {
 }
 
 CKFile::~CKFile() {

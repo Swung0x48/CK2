@@ -278,6 +278,26 @@ public:
     *********************************************************/
     void SetLastDeltaTime(float DtSet) { m_DeltaTime = DtSet; }
 
+    /*******************************************************
+    Summary: Enables or disables an externally supplied fixed clock.
+
+    Arguments:
+        Enabled: TRUE to use the supplied delta on every process, FALSE to
+                 resume the wall clock.
+        DeltaMilliseconds: Fixed unscaled delta in milliseconds. It must be
+                           finite and greater than zero when Enabled is TRUE.
+    Remarks:
+        + In external-clock mode PreProcess never derives the behavioral delta
+          from the startup chrono. Minimum/maximum limits and the time scale
+          factor are still applied normally.
+        + CKContext::ProcessFixed is the preferred one-call entry point.
+    See also: CKContext::ProcessFixed,IsExternalClockEnabled,GetExternalClockDelta
+    *********************************************************/
+    DLL_EXPORT CKERROR SetExternalClock(CKBOOL Enabled, float DeltaMilliseconds = 0.0f);
+
+    CKBOOL IsExternalClockEnabled() const { return m_ExternalClockEnabled; }
+    float GetExternalClockDelta() const { return m_ExternalDeltaTime; }
+
     //----------------------------------------------------
     //--  Runtime
 
@@ -381,6 +401,8 @@ protected:
     VxTimeProfiler m_StartupChrono;
 
     float m_DeltaTimeFree;
+    CKBOOL m_ExternalClockEnabled;
+    float m_ExternalDeltaTime;
 };
 
 #endif // CKTIMEMANAGER_H

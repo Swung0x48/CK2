@@ -232,6 +232,7 @@ public:
 
 protected:
     void ClearData();
+    void ReleaseLoadResources();
     CKERROR ReturnWithParserCleanup(CKBufferParser *parser, CKBufferParser **ParserPtr, CKERROR err);
     void FinalizeSaveState();
 
@@ -293,6 +294,7 @@ public:
     CKBOOL m_ReadFileDataDone;
     XBitArray m_AlreadyReferencedMask; // BitArray of IDs already referenced  {secret}
     XObjectPointerArray m_ReferencedObjects;
+    CKERROR m_OpenError;
 };
 
 #endif // CKFILE_H

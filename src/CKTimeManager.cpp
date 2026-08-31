@@ -3,6 +3,8 @@
 #include "CKStateChunk.h"
 #include "CKFile.h"
 
+#include <cmath>
+
 void CKTimeManager::ChangeLimitOptions(CK_FRAMERATE_LIMITS FpsOptions, CK_FRAMERATE_LIMITS BehOptions) {
     if (FpsOptions != CK_RATE_NOP)
     {
@@ -60,6 +62,28 @@ void CKTimeManager::ResetChronos(CKBOOL RenderChrono, CKBOOL BehavioralChrono) {
         m_BehChrono.Reset();
 }
 
+CKERROR CKTimeManager::SetExternalClock(CKBOOL Enabled, float DeltaMilliseconds) {
+    if (Enabled && (!std::isfinite(DeltaMilliseconds) || DeltaMilliseconds <= 0.0f)) {
+        return CKERR_INVALIDPARAMETER;
+    }
+
+    if (Enabled) {
+        if (!m_ExternalClockEnabled) {
+            m_LastTime = 0.0f;
+            m_CurrentTime = 0.0f;
+        }
+        m_ExternalDeltaTime = DeltaMilliseconds;
+        m_ExternalClockEnabled = TRUE;
+    } else {
+        const float current = m_StartupChrono.Current();
+        m_LastTime = current;
+        m_CurrentTime = current;
+        m_ExternalClockEnabled = FALSE;
+    }
+
+    return CK_OK;
+}
+
 CKERROR CKTimeManager::PreProcess() {
     CKStats &stats = m_Context->m_Stats;
     m_Context->m_Stats.TotalFrameTime = m_CurrentChrono.Current();
@@ -90,9 +114,13 @@ CKERROR CKTimeManager::PreProcess() {
     ++m_MainTickCount;
 
     m_LastTime = m_CurrentTime;
-    m_CurrentTime = m_StartupChrono.Current();
-
-    m_DeltaTime = m_CurrentTime - m_LastTime;
+    if (m_ExternalClockEnabled) {
+        m_CurrentTime += m_ExternalDeltaTime;
+        m_DeltaTime = m_ExternalDeltaTime;
+    } else {
+        m_CurrentTime = m_StartupChrono.Current();
+        m_DeltaTime = m_CurrentTime - m_LastTime;
+    }
     m_DeltaTimeFree = m_DeltaTime;
 
     if (m_DeltaTime < m_MinimumDeltaTime)
@@ -107,23 +135,32 @@ CKERROR CKTimeManager::PreProcess() {
 }
 
 CKERROR CKTimeManager::OnCKPlay() {
-    float current = m_StartupChrono.Current();
-    m_LastTime = current;
-    m_CurrentTime = current;
+    if (!m_ExternalClockEnabled) {
+        const float current = m_StartupChrono.Current();
+        m_LastTime = current;
+        m_CurrentTime = current;
+    }
     m_Paused = FALSE;
     return CK_OK;
 }
 
 CKERROR CKTimeManager::OnCKPause() {
     m_Paused = TRUE;
-    m_CurrentTime = m_StartupChrono.Current();
+    if (!m_ExternalClockEnabled) {
+        m_CurrentTime = m_StartupChrono.Current();
+    }
     return CK_OK;
 }
 
 CKERROR CKTimeManager::OnCKReset() {
-    float current = m_StartupChrono.Current();
-    m_LastTime = current;
-    m_CurrentTime = current;
+    if (m_ExternalClockEnabled) {
+        m_LastTime = 0.0f;
+        m_CurrentTime = 0.0f;
+    } else {
+        const float current = m_StartupChrono.Current();
+        m_LastTime = current;
+        m_CurrentTime = current;
+    }
     m_Paused = TRUE;
     m_PlayTime = 0.0f;
     return CK_OK;
@@ -188,6 +225,8 @@ CKTimeManager::CKTimeManager(CKContext *Context) : CKBaseManager(Context, TIME_M
     m_CurrentChrono.Reset();
     m_StartupChrono.Reset();
     m_MainTickCount = 0;
+    m_ExternalClockEnabled = FALSE;
+    m_ExternalDeltaTime = 1000.0f / 60.0f;
 
     float current = m_StartupChrono.Current();
     m_LastTime = current;
