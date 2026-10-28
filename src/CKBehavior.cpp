@@ -1139,7 +1139,17 @@ CKObject *CKBehavior::GetLocalParameterObject(int pos) {
         return nullptr;
 
     CK_ID objID = 0;
-    param->GetValue(&objID);
+    // BallanceMMO engine change #21: a parameter wider than a CK_ID (a pointer
+    // parameter on a 64-bit build) is read through its buffer; GetValue would
+    // copy all of its bytes into the 4-byte id.
+    const int size = param->GetDataSize();
+    if (size > (int) sizeof(CK_ID)) {
+        const void *data = param->GetReadDataPtr();
+        if (data)
+            memcpy(&objID, data, sizeof(CK_ID));
+    } else {
+        param->GetValue(&objID);
+    }
     return m_Context->GetObject(objID);
 }
 
@@ -1151,7 +1161,24 @@ CKERROR CKBehavior::SetLocalParameterObject(int pos, CKObject *obj) {
     CK_ID objID = 0;
     if (obj)
         objID = obj->GetID();
-    param->SetValue(&objID);
+    // BallanceMMO engine change #21: CKParameter::SetValue copies the
+    // parameter's own size from the buffer it is given, so a parameter wider
+    // than a CK_ID (a pointer parameter on a 64-bit build: the particle
+    // block's emitter, cleared with a null object at its BEHAVIORDETACH) got
+    // the id plus the bytes behind it on the stack - 0x00007FF600000000
+    // instead of a null pointer, which a later DEACTIVATESCRIPT callback then
+    // dereferenced at world teardown.  It gets the id zero-extended to its
+    // full size instead: the same value a 32-bit build writes.
+    const int size = param->GetDataSize();
+    if (size > (int) sizeof(CK_ID)) {
+        CKBYTE *buffer = new CKBYTE[size];
+        memset(buffer, 0, size);
+        memcpy(buffer, &objID, sizeof(CK_ID));
+        param->SetValue(buffer);
+        delete[] buffer;
+    } else {
+        param->SetValue(&objID);
+    }
     return CK_OK;
 }
 
